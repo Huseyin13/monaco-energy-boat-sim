@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monaco Energy Boat Sim</title>
+  <style>
+    html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; background: #000; }
+    canvas { display: block; }
+
+    #hud {
+      position: fixed; top: 12px; left: 12px;
+      font-family: Consolas, monospace; font-size: 14px;
+      color: #e8f4ff; background: rgba(10, 25, 40, 0.65);
+      padding: 10px 14px; border-radius: 8px;
+      line-height: 1.6; user-select: none;
+    }
+    #hud b { color: #6fd3ff; }
+
+    #race {
+      position: fixed; top: 12px; right: 12px;
+      font-family: Consolas, monospace; font-size: 14px;
+      color: #e8f4ff; background: rgba(10, 25, 40, 0.65);
+      padding: 10px 14px; border-radius: 8px;
+      line-height: 1.6; user-select: none;
+      text-align: right; min-width: 190px;
+    }
+    #race b { color: #7dffa0; }
+
+    .spark-row { margin-top: 4px; }
+    .spark-row small { color: #898781; display: block; }
+    .spark-row canvas { width: 180px; height: 34px; display: block; }
+
+    #report {
+      position: fixed; inset: 4vh 6vw; display: none;
+      background: #141b22; border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 12px; padding: 18px 22px;
+      font-family: Consolas, monospace; color: #e8f4ff;
+      flex-direction: column; gap: 12px; z-index: 10;
+    }
+    #report.open { display: flex; }
+    #report h2 { margin: 0; font-size: 16px; color: #6fd3ff; font-weight: bold; }
+    #report .stats { display: flex; gap: 12px; flex-wrap: wrap; }
+    #report .tile {
+      background: #1c242d; border-radius: 8px; padding: 8px 14px; flex: 1;
+      min-width: 110px;
+    }
+    #report .tile .val { font-size: 20px; color: #ffffff; }
+    #report .tile .cap { font-size: 11px; color: #898781; }
+    #report .grid {
+      flex: 1; display: grid; gap: 12px; min-height: 0;
+      grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+    }
+    #report .card {
+      background: #1c242d; border-radius: 8px; padding: 8px 10px;
+      display: flex; flex-direction: column; min-height: 0;
+    }
+    #report .card h3 { margin: 0 0 4px; font-size: 12px; color: #c3c2b7; font-weight: normal; }
+    #report .card canvas { width: 100%; flex: 1; min-height: 0; }
+    #report .hint { font-size: 12px; color: #898781; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <b>MONACO SIM</b><br>
+    Speed: <span id="hud-speed">0.0</span> km/h (<span id="hud-knots">0.0</span> kn)<br>
+    Throttle: <span id="hud-throttle">0</span>%<br>
+    Thrust: <span id="hud-thrust">0</span> N<br>
+    Drag: <span id="hud-drag">0</span> N<br>
+    RPM: <span id="hud-rpm">0</span><br>
+    Temp: <span id="hud-temp">25° · 25°</span><br>
+    Source: <span id="hud-source">Battery</span><br>
+    Power: <span id="hud-power">0.0</span> kW<br>
+    Energy: <span id="hud-energy">100.0</span>%<br>
+    Range: <span id="hud-range">∞</span><br>
+    Wind: <span id="hud-wind">Calm</span><br>
+    <canvas id="wind-dial" width="150" height="150"
+            style="width:75px;height:75px;display:block;margin:4px 0"></canvas>
+    Sun: <span id="hud-sun">12:00 · 1000 W/m²</span><br>
+    <small>W/S: throttle · A/D: rudder · 1/2/3: source · R: refill<br>
+    4/5/6: course · T: restart · G: report · E: CSV<br>
+    N: time of day · B: wind · L: serial link</small>
+    <div class="spark-row"><small>speed</small><canvas id="spark-speed"></canvas></div>
+    <div class="spark-row"><small>power</small><canvas id="spark-power"></canvas></div>
+    <div class="spark-row"><small>energy</small><canvas id="spark-energy"></canvas></div>
+  </div>
+
+  <div id="race"></div>
+
+  <div id="report">
+    <h2>RUN REPORT</h2>
+    <div class="stats">
+      <div class="tile"><div class="val" id="st-dur">—</div><div class="cap">duration</div></div>
+      <div class="tile"><div class="val" id="st-dist">—</div><div class="cap">distance</div></div>
+      <div class="tile"><div class="val" id="st-avg">—</div><div class="cap">avg speed</div></div>
+      <div class="tile"><div class="val" id="st-used">—</div><div class="cap">energy used</div></div>
+      <div class="tile"><div class="val" id="st-eff">—</div><div class="cap">Wh/km (efficiency)</div></div>
+    </div>
+    <div class="grid">
+      <div class="card"><h3>Speed (km/h)</h3><canvas id="ch-speed"></canvas></div>
+      <div class="card"><h3>Power (kW)</h3><canvas id="ch-power"></canvas></div>
+      <div class="card"><h3>Energy (%)</h3><canvas id="ch-energy"></canvas></div>
+      <div class="card"><h3>Track (colour = speed)</h3><canvas id="ch-track"></canvas></div>
+    </div>
+    <div class="hint">G: close · E: download CSV · T: new run (clears the log)</div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
